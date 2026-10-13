@@ -68,4 +68,3 @@ jobs:
           name: DualEMA_V2_4_Alerts_APK
           path: DualEMA_V2_4_Alerts.apk
           if-no-files-found: error
-          
