@@ -1,8 +1,10 @@
 name: Build Dual EMA Android APK
+
 on:
   workflow_dispatch:
   push:
     branches: [main, master]
+
 jobs:
   apk:
     runs-on: ubuntu-latest
@@ -10,7 +12,9 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+
       - name: Restore Android project folders from mobile uploads
+        shell: bash
         run: |
           set -euo pipefail
           mkdir -p app/src/main/java/com/dualema/alerts
@@ -19,29 +23,51 @@ jobs:
             cp "${f}.java" "app/src/main/java/com/dualema/alerts/${f}.java"
           done
           cp build.gradle app/build.gradle
-          cat > build.gradle <<'EOF'
+          cat > build.gradle <<'GRADLE'
           plugins {
               id 'com.android.application' version '8.7.3' apply false
           }
-          EOF
+          GRADLE
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-      - name: Install required Android SDK components
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Locate Android SDK and install build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "Android SDK location: $SDK_ROOT"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -path '*/bin/*' | sort -V | tail -n 1)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo '::error::Android sdkmanager executable not found'
+            exit 1
+          fi
+          echo "Using sdkmanager: $SDKMANAGER"
+          yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null || true
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" 'platforms;android-35' 'build-tools;35.0.0'
+          test -f "$SDK_ROOT/platforms/android-35/android.jar"
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+
       - name: Assemble debug APK
         run: gradle --no-daemon :app:assembleDebug
-      - name: Name output
+
+      - name: Name APK
+        shell: bash
         run: |
+          set -euo pipefail
           test -s app/build/outputs/apk/debug/app-debug.apk
           cp app/build/outputs/apk/debug/app-debug.apk DualEMA_V2_4_Alerts.apk
+
       - uses: actions/upload-artifact@v4
         with:
           name: DualEMA_V2_4_Alerts_APK
           path: DualEMA_V2_4_Alerts.apk
           if-no-files-found: error
-          
